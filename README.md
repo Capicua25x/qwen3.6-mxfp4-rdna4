@@ -24,7 +24,7 @@ Both columns measured on the same bench (2× R9700, TP2, MTP-3):
 | Single-stream, 6k prompt | ~82 tok/s | ~85 |
 | Concurrency ceiling, short prompt | **~128** | ~128 |
 | Aggregate @128 (short) | **~1875 tok/s** | ~1683 |
-| MTP draft acceptance | ~55% (grafted, MTP-3) | 81.2% (native, MTP-4) |
+| MTP draft acceptance (MTP-3, measured) | ~56% (grafted) | ~64% (native) |
 | Size | 69.3 GB BF16 → **20.5 GB** (29.6%) | — |
 
 Effectively **at parity** — the distill edges short-prompt single-stream (107 vs 101) and
@@ -64,9 +64,9 @@ vocab 248320), so it grafts straight in: copy the 785 BF16 `mtp.*` tensors from 
 base MXFP4 build, set `mtp_num_hidden_layers: 1`, and **add the `mtp.*` modules to
 `quantization_config.ignore`** (else vLLM tries to load the BF16 MTP as quantized →
 `fc.weight not found in params_dict`). See `scripts/graft-mtp.py`. The grafted head
-hits **55% acceptance** despite being base-trained (native is 81%) — MTP is lossless,
-so it only ever helps. A native MTP retrain on the distill's hidden states would close
-the remaining concurrency gap.
+hits **~56% acceptance** despite being base-trained — only ~8pp behind the base's own native
+MTP (~64%, both measured at MTP-3). MTP is lossless, so it only ever helps; a native MTP
+retrain on the distill's hidden states would close the rest.
 
 ## Reproduce
 
@@ -85,9 +85,8 @@ bash scripts/serve-mxfp4-mtp.sh
 
 ## Caveats
 
-- **MTP acceptance 55%** (grafted, base-trained head) vs 81% native → realistic-prompt
-  high-concurrency trails the native-MTP base. Single-stream and short-prompt concurrency
-  are at/above parity.
+- **MTP acceptance ~56%** (grafted) vs ~64% native, both measured at MTP-3 — only ~8pp behind.
+  Single-stream and short-prompt concurrency are at/above parity.
 - **Thinking traces are inline, not in `reasoning_content`** — the qwen3 reasoning parser
   doesn't capture a separated `<think>` block from this distill; it reasons in `content`.
 - Built and tested only on **gfx1201 (RDNA4, R9700)** with `tcclaviger/vllm-rocm-mxfp4-nvfp4`.
