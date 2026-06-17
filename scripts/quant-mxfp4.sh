@@ -24,9 +24,9 @@
 # R9700s that prod vLLM is serving on.
 set -euo pipefail
 
-VENV=/home/ludwid/quant-venv
+VENV=$HOME/quant-venv
 SNAP=$(ls -d "$HOME"/.cache/huggingface/hub/models--nerkyor--Qwen3.6-35B-A3B-DSV4Pro-Thinking-Distill/snapshots/*/ | head -1)
-OUT=/home/ludwid/Qwen3.6-35B-A3B-DSV4Pro-Thinking-Distill-MXFP4
+OUT=$HOME/Qwen3.6-35B-A3B-DSV4Pro-Thinking-Distill-MXFP4
 
 echo "model_dir : $SNAP"
 echo "output_dir: $OUT"

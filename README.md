@@ -16,19 +16,22 @@ build that loads cleanly and benches **at parity with the production base model*
 
 ## Results (2× R9700, TP2, MXFP4, MTP-3 grafted)
 
-| Metric | This build | Prod base (`pahajokiconsulting/Qwen3.6-35B-A3B-MXFP4`, MTP-3) |
+Both columns measured on the same bench (2× R9700, TP2, MTP-3):
+
+| Metric | This build | Base (`pahajokiconsulting/Qwen3.6-35B-A3B-MXFP4`) |
 |---|---|---|
-| Single-stream, short prompt | **107 tok/s** | ~100 |
-| Single-stream, 6k prompt | **82 tok/s** | ~100 |
+| Single-stream, short prompt | **~107 tok/s** | ~101 |
+| Single-stream, 6k prompt | ~82 tok/s | ~85 |
 | Concurrency ceiling, short prompt | **~128** | ~128 |
-| Concurrency ceiling, 6k prompt | ~32 | ~128 |
-| Aggregate @128 (short) | ~1875 tok/s | — |
-| MTP draft acceptance | 55% (grafted head) | 81% (native) |
+| Aggregate @128 (short) | **~1875 tok/s** | ~1683 |
+| MTP draft acceptance | ~55% (grafted, MTP-3) | 81.2% (native, MTP-4) |
 | Size | 69.3 GB BF16 → **20.5 GB** (29.6%) | — |
 
-Single-stream **edges out the production base**; short-prompt concurrency matches it.
-The realistic-prompt high-concurrency gap is purely the grafted MTP head's lower
-acceptance (it was trained on the *base* hidden states, not the LoRA-shifted distill).
+Effectively **at parity** — the distill edges short-prompt single-stream (107 vs 101) and
+high-concurrency aggregate (1875 vs 1683 @128); 6k single-stream is a wash (82 vs 85). At 6k
+prompts under high concurrency *both* models drop below the usable floor (a stack property, not
+the distill). The distill's real win is **agentic: ~4× faster per turn-chain** at equal task
+success — its DS-V4-Pro distillation makes it decisive.
 
 ## What was non-obvious
 
@@ -78,7 +81,7 @@ python scripts/graft-mtp.py
 bash scripts/serve-mxfp4-mtp.sh
 ```
 
-> The scripts use the author's absolute paths (`/home/ludwid/...`); adjust to taste.
+> The scripts use `$HOME`-relative paths; set the model / output / venv dirs to taste.
 
 ## Caveats
 

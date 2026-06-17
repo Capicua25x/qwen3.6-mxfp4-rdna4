@@ -9,7 +9,7 @@
 # PROD apexia-vllm-qwen MUST be stopped first (both cards are needed; can't co-fit).
 set -euo pipefail
 
-MODEL=/home/ludwid/Qwen3.6-35B-A3B-DSV4Pro-Thinking-Distill-MXFP4
+MODEL=$HOME/Qwen3.6-35B-A3B-DSV4Pro-Thinking-Distill-MXFP4
 
 R1=$(readlink -f /dev/dri/by-path/pci-0000:03:00.0-render)
 C1=$(readlink -f /dev/dri/by-path/pci-0000:03:00.0-card)
@@ -23,7 +23,7 @@ exec docker run --rm --name apexia-vllm-try --network=host \
   --device=/dev/kfd --device="$R1" --device="$C1" --device="$R2" --device="$C2" \
   --group-add=video --group-add=render --ipc=host --security-opt seccomp=unconfined \
   -e HF_HUB_OFFLINE=1 \
-  -v /home/ludwid/.cache/huggingface:/root/.cache/huggingface \
+  -v $HOME/.cache/huggingface:/root/.cache/huggingface \
   -v "$MODEL":"$MODEL":ro \
   tcclaviger/vllm-rocm-mxfp4-nvfp4:latest \
   "$MODEL" \

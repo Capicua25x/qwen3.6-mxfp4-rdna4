@@ -19,7 +19,7 @@ from safetensors.torch import save_file
 
 PAH = glob.glob(os.path.expanduser(
     "~/.cache/huggingface/hub/models--pahajokiconsulting--Qwen3.6-35B-A3B-MXFP4/snapshots/*/"))[0]
-OUT = "/home/ludwid/Qwen3.6-35B-A3B-DSV4Pro-Thinking-Distill-MXFP4"
+OUT = os.path.expanduser("~/Qwen3.6-35B-A3B-DSV4Pro-Thinking-Distill-MXFP4")
 
 pah_idx = json.load(open(os.path.join(PAH, "model.safetensors.index.json")))
 mtp_map = {k: v for k, v in pah_idx["weight_map"].items() if k.startswith("mtp.")}
