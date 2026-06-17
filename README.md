@@ -83,6 +83,28 @@ bash scripts/serve-mxfp4-mtp.sh
 
 > The scripts use `$HOME`-relative paths; set the model / output / venv dirs to taste.
 
+## Optional: add image support back (vision graft)
+
+The distill is text-only — nerkyor dropped the base's vision tower on export. But just like MTP,
+the base Qwen3.6 vision tower **grafts straight back in** (`scripts/graft-vision.py`), giving a
+text **+ reasoning + vision + MTP** model at **zero text-perf cost**:
+
+1. Copy the base's 333 `model.visual.*` tensors (BF16, ~0.9 GB) into a new shard.
+2. Add the `model.visual.*` modules to `quantization_config.ignore` (kept BF16, like MTP).
+3. The config is already multimodal-shaped from the wrap step — just **drop `--language-model-only`**
+   when serving, and use the base's `chat_template` + `preprocessor_config` (handles image tokens).
+
+**Why it works:** the vision tower → merger projects to `out_hidden_size: 2048` = the LM's hidden
+size, and the light text-only LoRA didn't disturb the LM's ability to read those embeddings.
+Verified: fed a generated image (text + shapes), the model read the text, shapes, colors, and
+positions correctly. Unlike MTP, vision is **not** lossless — a heavier-finetuned LM could fail to
+ground the base embeddings — so **test it** (it works here; YMMV on other distills).
+
+Validation of the vision build (vs the text-only one): SQL regression **136/137, 0 FAIL**; agent
+eval **27/27, 0 FAIL**; single-stream **108.9 tok/s**, ceiling **~128**, MTP **57%** — all identical
+to text-only. Vision adds ~0.9 GB VRAM and **0 text-perf** (the tower only fires on image input).
+Published as a separate model: `Capicua25x/Qwen3.6-35B-A3B-DSV4Pro-Thinking-Distill-MXFP4-Vision`.
+
 ## Caveats
 
 - **MTP acceptance ~56%** (grafted) vs ~64% native, both measured at MTP-3 — only ~8pp behind.
