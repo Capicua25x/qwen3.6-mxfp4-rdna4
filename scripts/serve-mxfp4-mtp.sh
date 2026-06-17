@@ -3,7 +3,7 @@
 # Mirrors the prod wrapper (apexia-vllm-qwen.sh) but:
 #   - points at the LOCAL quant dir (not the HF cache model)
 #   - MTP-1 enabled: base Qwen3.6 MTP block grafted in (graft-mtp.py); mtp_num_hidden_layers=1
-#   - max-model-len 32768 (fast load / small KV for a smoke test; base supports 262144)
+#   - max-model-len 262144 (full context; agentic/OpenCode sessions blow past small windows)
 #   - container name apexia-vllm-try so it won't collide with the prod unit's name
 # Serves on :8011 as "qwen" so the existing test harness / curl probes just work.
 # PROD apexia-vllm-qwen MUST be stopped first (both cards are needed; can't co-fit).
