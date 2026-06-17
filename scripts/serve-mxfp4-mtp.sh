@@ -28,7 +28,7 @@ exec docker run --rm --name apexia-vllm-try --network=host \
   tcclaviger/vllm-rocm-mxfp4-nvfp4:latest \
   "$MODEL" \
   --served-model-name qwen --port 8011 --trust-remote-code \
-  --tensor-parallel-size 2 --gpu-memory-utilization 0.92 --max-model-len 32768 \
+  --tensor-parallel-size 2 --gpu-memory-utilization 0.92 --max-model-len 262144 \
   --enable-prefix-caching --max-num-seqs 64 \
   --language-model-only \
   --speculative-config '{"method":"mtp","num_speculative_tokens":3}' \
