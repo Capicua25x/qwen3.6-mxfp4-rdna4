@@ -169,9 +169,22 @@ vllm serve /quant/Qwen3.8-27B-MXFP4 --served-model-name qwen --tensor-parallel-s
 - Quality gate: gsm8k n=50 (5-shot, thinking, seed 1234) **0.98 flex / 0.98 strict**; the 
   analista regression suite (166 NL→SQL/analysis tests) **164/166, 0 FAIL** — identical to the
   Ornith-35B production baseline.
+- Concurrency, TP2 (per-user / aggregate tok/s; short prompt · 6k prefill):
+  1: 46.8/47 · 47.4/47 — 8: 33.7/268 · 21.7/168 — 16: 26.2/412 · 14.6/225 — 32: 19.6/**600** · 8.6/235
+  — 64: 14.5/610 · 6.0/252. Aggregate at 32+ users beats FP8 (600 vs 430): batching amortizes the
+  dequant. The 6k-prefill drop vs FP8 is mostly `--max-num-batched-tokens 8192` (prefill in twice the
+  steps) — that budget is what buys the 262k fit; 12288 should still fit (~289k pool) if you care
+  more about prefill than the last bit of KV.
 - Single card (1× R9700): `--max-model-len 32768 --max-num-seqs 8` → ~41k KV tokens, ~27 tok/s.
   64k/16 slots does not fit on one card (GDN fp32 state ~300 MB/slot un-split). Single-card MXFP4
   is a **memory** win, not a speed win.
+- **Why MXFP4 is slower per token here:** RDNA4 has no FP4 datapath. FP8 rides native FP8 WMMA
+  (`TritonFp8BlockScaledMMKernel`); MXFP4 goes through `RdnaMxfp4LinearKernel`, which unpacks each
+  4-bit tile to bf16 *inside* the GEMM before WMMA. At batch 1 that unpack rivals the matmul, so decode
+  becomes dequant-bound (16 vs 21 steps/s) despite reading 30 % fewer bytes; under load the unpack is
+  amortized across the batch and the byte savings win. On MI350/gfx950 (native MX) it is a speed
+  format; on the R9700 it is a **capacity** format (262k window, bigger KV pool). Kernel-side fix
+  worth pursuing: unpack to FP8 (not bf16) and use the FP8 WMMA path.
 
 ### Compared: `amd/Qwen3.8-27B-Quark-AWQ-MXFP4`
 
