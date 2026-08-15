@@ -123,3 +123,69 @@ Published as a separate model: `Capicua25x/Qwen3.6-35B-A3B-DSV4Pro-Thinking-Dist
 ## License
 
 MIT — see [LICENSE](LICENSE). Inherits Apache-2.0 (Qwen base) + MIT (distill data) attribution.
+
+---
+
+## Qwen3.8-27B (dense hybrid, native MTP) — 2026-08-15
+
+Same image, same kernels, new model. The 27B ships its own MTP head (`mtp_num_hidden_layers=1`),
+so there is **nothing to graft** — the only trick is keeping `mtp.*` in BF16 (and listed in
+`ignore`/`exclude`) so vLLM does not expect 4-bit scales for it. Scripts:
+`scripts/quant-qwen3.8-27b-mxfp4.sh`, `scripts/serve-qwen3.8-27b-mxfp4.sh {tp2|single|fp8}`.
+
+### Recipe A — FP8 (stock, fastest per token)
+
+```bash
+vllm serve Qwen/Qwen3.8-27B-FP8 --served-model-name qwen --tensor-parallel-size 2 \
+  --max-model-len 65536 --max-num-seqs 32 --gpu-memory-utilization 0.92 \
+  --attention-backend TRITON_ATTN --enable-prefix-caching \
+  --speculative-config '{"method":"mtp","num_speculative_tokens":3,"attention_backend":"TRITON_ATTN"}'
+```
+- 2× R9700 TP2: 15.1 GiB weights/GPU; **~63 tok/s** single-stream with MTP-3 (accept ~3.0/step,
+  ~21 steps/s ≈ raw decode rate — MTP is ~free); no-spec 23 tok/s.
+- Window: **64k**. 262k does not fit (a 262k request needs ~10.5 GiB KV; the pool is 3–5 GiB
+  after weights + GDN state). 131k fits only at ≤16 slots.
+- Concurrency (short / 6k prefill): 57/58 tok/s @1 · 25/16 @32 · aggregate 430/295 @32.
+
+### Recipe B — MXFP4 (recommended: full 262k window on 2 cards)
+
+```bash
+# 1) quantize on CPU (RTN, olka/qstream, ~30 min): 55.6 GB -> 22.3 GB
+qstream-quantize --model_dir <Qwen/Qwen3.8-27B snapshot> --output_dir Qwen3.8-27B-MXFP4 --workers 8 --format ct
+#    default excludes = self_attn, mlp.gate, lm_head, embed_tokens, visual, mtp (all BF16);
+#    quantized = 64 MLPs + 48 GDN projections (432 Linear), compressed-tensors mxfp4-pack-quantized.
+# 2) serve
+vllm serve /quant/Qwen3.8-27B-MXFP4 --served-model-name qwen --tensor-parallel-size 2 \
+  --max-model-len 262144 --max-num-seqs 32 --gpu-memory-utilization 0.95 --max-num-batched-tokens 8192 \
+  --attention-backend TRITON_ATTN --enable-prefix-caching \
+  --speculative-config '{"method":"mtp","num_speculative_tokens":3,"attention_backend":"TRITON_ATTN"}'
+```
+- 2× R9700 TP2: 10.6 GiB weights/GPU; **KV pool ~345k tokens → 262k window at 32 slots** (1.32×).
+  `--max-num-batched-tokens 8192` + util 0.95 are what make it fit (the profiler's peak-activation
+  reservation scales with the batch budget).
+- **~51 tok/s** single-stream with MTP-3 (accept ~3.15/step) — ~19 % slower per token than FP8:
+  the RDNA in-kernel dequant makes each step costlier (16 vs 21 steps/s). Accepted trade for the
+  window + KV headroom.
+- Quality gate: gsm8k n=50 (5-shot, thinking, seed 1234) **0.98 flex / 0.98 strict**; the 
+  analista regression suite (166 NL→SQL/analysis tests) **164/166, 0 FAIL** — identical to the
+  Ornith-35B production baseline.
+- Single card (1× R9700): `--max-model-len 32768 --max-num-seqs 8` → ~41k KV tokens, ~27 tok/s.
+  64k/16 slots does not fit on one card (GDN fp32 state ~300 MB/slot un-split). Single-card MXFP4
+  is a **memory** win, not a speed win.
+
+### Compared: `amd/Qwen3.8-27B-Quark-AWQ-MXFP4`
+
+AMD's Quark AWQ build (W4A4, whole decoder incl. attention at 4-bit, 19 GB) loads on this image
+too — the RDNA kernel is weight-only, so its activation quant is ignored and it runs as W4A16 —
+**after** adding the 15 `mtp.*` modules to `quantization_config.exclude` (AMD ships the MTP head
+in BF16 but unlisted; without the patch vLLM demands Quark scales for it). Same speed as ours
+(~27 tok/s TP1), lower MTP acceptance (2.93 vs 3.05), and gsm8k n=50 **0.96 flex / 0.78 strict**:
+the number is usually right but the `#### N` answer format degrades — quantized attention costs
+instruction adherence. That is why our build keeps attention BF16 at +2.3 GB.
+
+### Gotchas that cost a relaunch
+- Symlinks into the host HF cache break inside the container (different mount path) — hardlink or copy.
+- The 262k window is a KV-pool question, not a per-request one: vLLM requires the whole pool ≥
+  `max-model-len`. Every slot costs ~150 MB/GPU (TP2) of GDN state before any tokens.
+- Rank 0 loads weights ~10× slower than rank 1 (≈335 s vs 35 s) on every launch, page cache warm
+  or not — budget ~8 min per restart.
