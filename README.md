@@ -163,9 +163,9 @@ vllm serve /quant/Qwen3.8-27B-MXFP4 --served-model-name qwen --tensor-parallel-s
 - 2× R9700 TP2: 10.6 GiB weights/GPU; **KV pool ~345k tokens → 262k window at 32 slots** (1.32×).
   `--max-num-batched-tokens 8192` + util 0.95 are what make it fit (the profiler's peak-activation
   reservation scales with the batch budget).
-- **~51 tok/s** single-stream with MTP-3 (accept ~3.15/step) — ~19 % slower per token than FP8:
-  the RDNA in-kernel dequant makes each step costlier (16 vs 21 steps/s). Accepted trade for the
-  window + KV headroom.
+- **~61 tok/s** single-stream with MTP-3 on image rc6 (`RdnaMxfp4Fp8LinearKernel`: MXFP4 × e4m3 on
+  FP8 WMMA; 51 tok/s on rc5's bf16-unpack kernel). Short sweep c1 57 tok/s = stock FP8; aggregate at
+  32 users 649 (FP8 430). 6k-prefill still ~10 % behind FP8 per user (native fp8 prefill GEMM).
 - Quality gate: gsm8k n=50 (5-shot, thinking, seed 1234) **0.98 flex / 0.98 strict**; the 
   analista regression suite (166 NL→SQL/analysis tests) **164/166, 0 FAIL** — identical to the
   Ornith-35B production baseline.
@@ -178,13 +178,15 @@ vllm serve /quant/Qwen3.8-27B-MXFP4 --served-model-name qwen --tensor-parallel-s
 - Single card (1× R9700): `--max-model-len 32768 --max-num-seqs 8` → ~41k KV tokens, ~27 tok/s.
   64k/16 slots does not fit on one card (GDN fp32 state ~300 MB/slot un-split). Single-card MXFP4
   is a **memory** win, not a speed win.
-- **Why MXFP4 is slower per token here:** RDNA4 has no FP4 datapath. FP8 rides native FP8 WMMA
+- **Why MXFP4 *was* slower per token (rc5):** RDNA4 has no FP4 datapath. FP8 rides native FP8 WMMA
   (`TritonFp8BlockScaledMMKernel`); MXFP4 goes through `RdnaMxfp4LinearKernel`, which unpacks each
   4-bit tile to bf16 *inside* the GEMM before WMMA. At batch 1 that unpack rivals the matmul, so decode
   becomes dequant-bound (16 vs 21 steps/s) despite reading 30 % fewer bytes; under load the unpack is
   amortized across the batch and the byte savings win. On MI350/gfx950 (native MX) it is a speed
   format; on the R9700 it is a **capacity** format (262k window, bigger KV pool). Kernel-side fix
-  worth pursuing: unpack to FP8 (not bf16) and use the FP8 WMMA path.
+  — done in rc6: unpack to e4m3 (exact bit patterns), fp8 WMMA `tl.dot` per 32-K block, block scale on the
+  fp32 partial, per-(token,32-group) e4m3 activations; prefill via exact bf16 dequant + hipBLASLt.
+  Result: parity with FP8 at c=1, higher aggregate at c≥32, quality unchanged (gsm8k ×3 seeds, suites).
 
 ### Compared: `amd/Qwen3.8-27B-Quark-AWQ-MXFP4`
 

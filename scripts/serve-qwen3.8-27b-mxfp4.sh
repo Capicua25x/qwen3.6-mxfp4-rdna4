@@ -11,7 +11,7 @@
 #            per slot un-split, plus full-size graphs/activations.)
 set -euo pipefail
 PROFILE=${1:-tp2}; MODEL=${MODEL:-/quant/Qwen3.8-27B-MXFP4}; PORT=${PORT:-8011}
-IMG=${IMG:-capicua25x/vllm-rocm-rdna4:0.26.1-rdna4}
+IMG=${IMG:-capicua25x/vllm-rocm-rdna4:0.26.1-rdna4-rc6}
 case "$PROFILE" in
   tp2)    TP=2; MAXLEN=262144; SEQS=32; UTIL=0.95; BATCH=8192 ;;
   single) TP=1; MAXLEN=32768;  SEQS=8;  UTIL=0.95; BATCH=8192 ;;
