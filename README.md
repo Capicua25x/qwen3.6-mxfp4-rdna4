@@ -166,8 +166,8 @@ vllm serve /quant/Qwen3.8-27B-MXFP4 --served-model-name qwen --tensor-parallel-s
 - **~61 tok/s** single-stream with MTP-3 on image rc6 (`RdnaMxfp4Fp8LinearKernel`: MXFP4 × e4m3 on
   FP8 WMMA; 51 tok/s on rc5's bf16-unpack kernel). Short sweep c1 57 tok/s = stock FP8; aggregate at
   32 users 649 (FP8 430). 6k-prefill still ~10 % behind FP8 per user (native fp8 prefill GEMM).
-- Quality gate: gsm8k n=50 (5-shot, thinking, seed 1234) **0.98 flex / 0.98 strict**; the 
-  analista regression suite (166 NL→SQL/analysis tests) **164/166, 0 FAIL** — identical to the
+- Quality gate: gsm8k n=50 (5-shot, thinking, seed 1234) **0.98 flex / 0.98 strict**; the in-house
+  NL→SQL regression suite (166 tests) **164/166, 0 FAIL** — identical to the
   Ornith-35B production baseline.
 - Concurrency, TP2 (per-user / aggregate tok/s; short prompt · 6k prefill):
   1: 46.8/47 · 47.4/47 — 8: 33.7/268 · 21.7/168 — 16: 26.2/412 · 14.6/225 — 32: 19.6/**600** · 8.6/235
